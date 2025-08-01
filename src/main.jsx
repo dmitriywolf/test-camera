@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.jsx";
+import App from "./AppCanvas.jsx";
 import { VideoProvider } from "./video.jsx";
 
 import("eruda").then((eruda) => {
