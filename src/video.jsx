@@ -130,6 +130,85 @@ export const VideoProvider = ({ children }) => {
    * даёт площадь, близкую к заявленной в track.getSettings() (±10%).
    */
 
+  // function testVideoStream(stream, timeoutMillis = 1000) {
+  //   return new Promise((resolve) => {
+  //     const videoTrack = stream.getVideoTracks()[0];
+  //     if (!videoTrack) {
+  //       console.warn("[testVideoStream] Нет videoTrack");
+  //       resolve(false);
+  //       return;
+  //     }
+
+  //     const setts = videoTrack.getSettings() || {};
+  //     const desiredW = setts.width || 640;
+  //     const desiredH = setts.height || 480;
+  //     const expectedArea = desiredW * desiredH;
+  //     console.log(
+  //       `[testVideoStream] track.getSettings() => ${desiredW}x${desiredH}, area=${expectedArea}`
+  //     );
+
+  //     const testVideo = document.createElement("video");
+  //     testVideo.style.position = "fixed";
+  //     testVideo.style.left = "0";
+  //     testVideo.style.top = "0";
+  //     testVideo.style.width = desiredW + "px";
+  //     testVideo.style.height = desiredH + "px";
+  //     testVideo.style.opacity = "0";
+  //     testVideo.style.zIndex = "0";
+
+  //     testVideo.playsInline = true;
+  //     testVideo.muted = true;
+  //     testVideo.autoplay = true;
+  //     testVideo.srcObject = stream;
+
+  //     let finished = false;
+
+  //     const cleanUp = () => {
+  //       if (testVideo.parentNode) testVideo.parentNode.removeChild(testVideo);
+  //       testVideo.srcObject = null;
+  //     };
+
+  //     const doResolve = (val) => {
+  //       if (finished) return;
+  //       finished = true;
+  //       cleanUp();
+  //       resolve(val);
+  //     };
+
+  //     const onLoadedData = async () => {
+  //       testVideo.removeEventListener("loadeddata", onLoadedData);
+  //       await new Promise((r) => setTimeout(r, 100));
+  //       const vw = testVideo.videoWidth;
+  //       const vh = testVideo.videoHeight;
+  //       const actualArea = vw * vh;
+  //       console.log(
+  //         `[testVideoStream] Реальный кадр: ${vw}x${vh}, area=${actualArea}`
+  //       );
+  //       const areaOk = withinTolerance(actualArea, expectedArea, 0.1);
+  //       if (areaOk) {
+  //         console.log("[testVideoStream] => OK, площадь совпадает (±10%)");
+  //         doResolve(true);
+  //       } else {
+  //         console.warn(
+  //           "[testVideoStream] => Площадь слишком мала или чёрный кадр"
+  //         );
+  //         doResolve(false);
+  //       }
+  //     };
+
+  //     testVideo.addEventListener("loadeddata", onLoadedData);
+  //     document.body.appendChild(testVideo);
+  //     testVideo.play().catch((err) => {
+  //       console.warn("testVideoStream play() error:", err);
+  //     });
+
+  //     setTimeout(() => {
+  //       console.warn("[testVideoStream] timeout, считаем как failed");
+  //       doResolve(false);
+  //     }, timeoutMillis);
+  //   });
+  // }
+
   function testVideoStream(stream, timeoutMillis = 1000) {
     return new Promise((resolve) => {
       const videoTrack = stream.getVideoTracks()[0];
@@ -138,7 +217,7 @@ export const VideoProvider = ({ children }) => {
         resolve(false);
         return;
       }
-
+  
       const setts = videoTrack.getSettings() || {};
       const desiredW = setts.width || 640;
       const desiredH = setts.height || 480;
@@ -146,7 +225,7 @@ export const VideoProvider = ({ children }) => {
       console.log(
         `[testVideoStream] track.getSettings() => ${desiredW}x${desiredH}, area=${expectedArea}`
       );
-
+  
       const testVideo = document.createElement("video");
       testVideo.style.position = "fixed";
       testVideo.style.left = "0";
@@ -155,26 +234,28 @@ export const VideoProvider = ({ children }) => {
       testVideo.style.height = desiredH + "px";
       testVideo.style.opacity = "0";
       testVideo.style.zIndex = "0";
-
+  
       testVideo.playsInline = true;
       testVideo.muted = true;
       testVideo.autoplay = true;
       testVideo.srcObject = stream;
-
+  
       let finished = false;
-
+      let timeoutId;
+  
       const cleanUp = () => {
         if (testVideo.parentNode) testVideo.parentNode.removeChild(testVideo);
         testVideo.srcObject = null;
       };
-
+  
       const doResolve = (val) => {
         if (finished) return;
         finished = true;
+        clearTimeout(timeoutId);
         cleanUp();
         resolve(val);
       };
-
+  
       const onLoadedData = async () => {
         testVideo.removeEventListener("loadeddata", onLoadedData);
         await new Promise((r) => setTimeout(r, 100));
@@ -195,14 +276,15 @@ export const VideoProvider = ({ children }) => {
           doResolve(false);
         }
       };
-
+  
       testVideo.addEventListener("loadeddata", onLoadedData);
       document.body.appendChild(testVideo);
       testVideo.play().catch((err) => {
         console.warn("testVideoStream play() error:", err);
       });
-
-      setTimeout(() => {
+  
+      timeoutId = setTimeout(() => {
+        if (finished) return; // уже завершили — ничего не делаем
         console.warn("[testVideoStream] timeout, считаем как failed");
         doResolve(false);
       }, timeoutMillis);
@@ -222,8 +304,7 @@ export const VideoProvider = ({ children }) => {
     console.log("GET OPTIONAL STREAM");
 
     let cameraVariants = CAMERA_RESOLUTION_VARIANTS;
-    // const facingMode = normalizeFacingMode(facingModeInit);
-    const facingMode = { exact: facingModeInit }; // ДЛЯ ТЕХНО Б6
+    const facingMode = normalizeFacingMode(facingModeInit);
 
     console.log("FACING MODE", facingMode);
 
