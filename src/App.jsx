@@ -83,7 +83,7 @@ export default function App() {
           autoPlay
           muted
           playsInline
-          style={{ width: "100%", maxWidth: 640, background: "#000" }}
+          style={{ maxWidth: "100%", background: "#000" }}
         />
       </div>
     </div>

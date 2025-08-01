@@ -35,7 +35,6 @@ const startCamera = async (params) => {
 
 const CAMERA_RESOLUTION_VARIANTS = [
   // Very high (новые смартфоны) — используем ideal, чтобы не ломать iOS сразу
-  // { width: { ideal: 4096 }, height: { ideal: 2160 } }, // 4K
   { width: { ideal: 3840 } }, // 4K UHD
   { width: { ideal: 2560 } }, // QHD (2K)
   { width: { ideal: 2340 } }, // FHD+
@@ -50,18 +49,11 @@ const CAMERA_RESOLUTION_VARIANTS = [
   { width: { min: 960 } },
   { width: { min: 854 } },
   { width: { min: 800 } },
-  // { width: { min: 640 }, height: { min: 480 } },
 
   // Идеальные fallback среднего уровня
   { width: { ideal: 1280 } },
   { width: { ideal: 1024 } },
-  // { width: { ideal: 640 }, height: { ideal: 480 } },
 
-  // Минимальное рабочее портретное
-  // { width: { min: 480 }, height: { min: 640 } },
-
-  // Ультра-низкий fallback (старые устройства)
-  // { width: { min: 320 }, height: { min: 240 } },
 ];
 
 export const VideoProvider = ({ children }) => {
@@ -227,8 +219,13 @@ export const VideoProvider = ({ children }) => {
   }
 
   async function getOptimalStream(facingModeInit) {
+    console.log("GET OPTIONAL STREAM");
+
     let cameraVariants = CAMERA_RESOLUTION_VARIANTS;
-    const facingMode = normalizeFacingMode(facingModeInit);
+    // const facingMode = normalizeFacingMode(facingModeInit);
+    const facingMode = { exact: facingModeInit }; // ДЛЯ ТЕХНО Б6
+
+    console.log("FACING MODE", facingMode);
 
     // Специально для iOS: не стартуем с самых больших → сначала mid-range
     if (isIOS()) {
