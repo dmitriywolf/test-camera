@@ -335,6 +335,8 @@ export const VideoProvider = ({ children }) => {
         ...cameraVariants[i],
         facingMode,
       };
+
+      console.log("CANDIDATE VIDEO", candidateVideo);
       const key = JSON.stringify(candidateVideo);
       if (failedConstraints.has(key)) continue;
 
@@ -356,10 +358,7 @@ export const VideoProvider = ({ children }) => {
 
         const isLive = await testVideoStream(stream);
         if (isLive) {
-          localStorage.setItem(
-            facingModeInit,
-            JSON.stringify(cameraVariants[i])
-          );
+          localStorage.setItem(facingModeInit, JSON.stringify(candidateVideo));
           setVideoLoader({ pos: 0, count: 0 });
           log(`[getOptimalStream] i=${i} => OK, return`);
           return stream;
