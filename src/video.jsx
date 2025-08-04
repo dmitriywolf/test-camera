@@ -8,6 +8,14 @@ import {
 } from "./common";
 
 export const VideoContext = createContext();
+const log = (...args) => {
+  console.log(...args);
+  return false;
+};
+const logWarn = (...args) => {
+  console.warn(...args);
+  return false;
+};
 
 // Вставь эту реализацию вместо текущей
 function isIOS() {
@@ -15,12 +23,14 @@ function isIOS() {
 }
 
 function normalizeFacingMode(facingModeInit) {
+  console.log("facingModeInit", facingModeInit);
   if (isIOS()) {
     return facingModeInit; // iOS любит строку без {ideal:}
   }
   if (isMobile()) {
     return { ideal: facingModeInit }; // мобильные (Android) — с ideal
   }
+  // Десктоп
   return facingModeInit;
 }
 
@@ -53,7 +63,6 @@ const CAMERA_RESOLUTION_VARIANTS = [
   // Идеальные fallback среднего уровня
   { width: { ideal: 1280 } },
   { width: { ideal: 1024 } },
-
 ];
 
 export const VideoProvider = ({ children }) => {
@@ -125,89 +134,38 @@ export const VideoProvider = ({ children }) => {
     }
   }, []);
 
-  /**
-   * Проверка, что реальное разрешение (через video.videoWidth/Height)
-   * даёт площадь, близкую к заявленной в track.getSettings() (±10%).
-   */
+  // обёртка, которая гарантирует остановку старого потока перед новой попыткой
+  const safeStartCamera = async (constraints, attempts = 2, delayMs = 200) => {
+    let lastErr = null;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        // небольшая задержка перед повтором (не для первой попытки)
+        if (i > 0) await new Promise((r) => setTimeout(r, delayMs));
 
-  // function testVideoStream(stream, timeoutMillis = 1000) {
-  //   return new Promise((resolve) => {
-  //     const videoTrack = stream.getVideoTracks()[0];
-  //     if (!videoTrack) {
-  //       console.warn("[testVideoStream] Нет videoTrack");
-  //       resolve(false);
-  //       return;
-  //     }
+        // Запрашиваем стрим
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        return stream;
+      } catch (err) {
+        lastErr = err;
 
-  //     const setts = videoTrack.getSettings() || {};
-  //     const desiredW = setts.width || 640;
-  //     const desiredH = setts.height || 480;
-  //     const expectedArea = desiredW * desiredH;
-  //     console.log(
-  //       `[testVideoStream] track.getSettings() => ${desiredW}x${desiredH}, area=${expectedArea}`
-  //     );
+        // Если ошибка — AbortError, то пробуем снова, но перед этим
+        // даём чуть времени системе и очищаем возможные висящие треки
+        if (err.name === "AbortError") {
+          console.warn(
+            `[safeStartCamera] AbortError, retrying (${i + 1}/${attempts})`,
+            err
+          );
+          // Не должно быть активного stream здесь, но на всякий:
+          // (если предыдущий стрим был присвоен где-то глобально, останови его)
+          continue;
+        }
 
-  //     const testVideo = document.createElement("video");
-  //     testVideo.style.position = "fixed";
-  //     testVideo.style.left = "0";
-  //     testVideo.style.top = "0";
-  //     testVideo.style.width = desiredW + "px";
-  //     testVideo.style.height = desiredH + "px";
-  //     testVideo.style.opacity = "0";
-  //     testVideo.style.zIndex = "0";
-
-  //     testVideo.playsInline = true;
-  //     testVideo.muted = true;
-  //     testVideo.autoplay = true;
-  //     testVideo.srcObject = stream;
-
-  //     let finished = false;
-
-  //     const cleanUp = () => {
-  //       if (testVideo.parentNode) testVideo.parentNode.removeChild(testVideo);
-  //       testVideo.srcObject = null;
-  //     };
-
-  //     const doResolve = (val) => {
-  //       if (finished) return;
-  //       finished = true;
-  //       cleanUp();
-  //       resolve(val);
-  //     };
-
-  //     const onLoadedData = async () => {
-  //       testVideo.removeEventListener("loadeddata", onLoadedData);
-  //       await new Promise((r) => setTimeout(r, 100));
-  //       const vw = testVideo.videoWidth;
-  //       const vh = testVideo.videoHeight;
-  //       const actualArea = vw * vh;
-  //       console.log(
-  //         `[testVideoStream] Реальный кадр: ${vw}x${vh}, area=${actualArea}`
-  //       );
-  //       const areaOk = withinTolerance(actualArea, expectedArea, 0.1);
-  //       if (areaOk) {
-  //         console.log("[testVideoStream] => OK, площадь совпадает (±10%)");
-  //         doResolve(true);
-  //       } else {
-  //         console.warn(
-  //           "[testVideoStream] => Площадь слишком мала или чёрный кадр"
-  //         );
-  //         doResolve(false);
-  //       }
-  //     };
-
-  //     testVideo.addEventListener("loadeddata", onLoadedData);
-  //     document.body.appendChild(testVideo);
-  //     testVideo.play().catch((err) => {
-  //       console.warn("testVideoStream play() error:", err);
-  //     });
-
-  //     setTimeout(() => {
-  //       console.warn("[testVideoStream] timeout, считаем как failed");
-  //       doResolve(false);
-  //     }, timeoutMillis);
-  //   });
-  // }
+        // Другие ошибки — не повторяем (например permission denied)
+        break;
+      }
+    }
+    throw lastErr;
+  };
 
   function testVideoStream(stream, timeoutMillis = 1000) {
     return new Promise((resolve) => {
@@ -217,7 +175,7 @@ export const VideoProvider = ({ children }) => {
         resolve(false);
         return;
       }
-  
+
       const setts = videoTrack.getSettings() || {};
       const desiredW = setts.width || 640;
       const desiredH = setts.height || 480;
@@ -225,7 +183,7 @@ export const VideoProvider = ({ children }) => {
       console.log(
         `[testVideoStream] track.getSettings() => ${desiredW}x${desiredH}, area=${expectedArea}`
       );
-  
+
       const testVideo = document.createElement("video");
       testVideo.style.position = "fixed";
       testVideo.style.left = "0";
@@ -234,20 +192,20 @@ export const VideoProvider = ({ children }) => {
       testVideo.style.height = desiredH + "px";
       testVideo.style.opacity = "0";
       testVideo.style.zIndex = "0";
-  
+
       testVideo.playsInline = true;
       testVideo.muted = true;
       testVideo.autoplay = true;
       testVideo.srcObject = stream;
-  
+
       let finished = false;
       let timeoutId;
-  
+
       const cleanUp = () => {
         if (testVideo.parentNode) testVideo.parentNode.removeChild(testVideo);
         testVideo.srcObject = null;
       };
-  
+
       const doResolve = (val) => {
         if (finished) return;
         finished = true;
@@ -255,7 +213,7 @@ export const VideoProvider = ({ children }) => {
         cleanUp();
         resolve(val);
       };
-  
+
       const onLoadedData = async () => {
         testVideo.removeEventListener("loadeddata", onLoadedData);
         await new Promise((r) => setTimeout(r, 100));
@@ -276,13 +234,13 @@ export const VideoProvider = ({ children }) => {
           doResolve(false);
         }
       };
-  
+
       testVideo.addEventListener("loadeddata", onLoadedData);
       document.body.appendChild(testVideo);
       testVideo.play().catch((err) => {
         console.warn("testVideoStream play() error:", err);
       });
-  
+
       timeoutId = setTimeout(() => {
         if (finished) return; // уже завершили — ничего не делаем
         console.warn("[testVideoStream] timeout, считаем как failed");
@@ -301,12 +259,12 @@ export const VideoProvider = ({ children }) => {
   }
 
   async function getOptimalStream(facingModeInit) {
-    console.log("GET OPTIONAL STREAM");
+    log("GET OPTIONAL STREAM");
 
     let cameraVariants = CAMERA_RESOLUTION_VARIANTS;
     const facingMode = normalizeFacingMode(facingModeInit);
 
-    console.log("FACING MODE", facingMode);
+    log("FACING MODE", facingMode);
 
     // Специально для iOS: не стартуем с самых больших → сначала mid-range
     if (isIOS()) {
@@ -335,10 +293,12 @@ export const VideoProvider = ({ children }) => {
       video: { facingMode },
     };
 
+    console.log("BASE CONSTRAINTS", baseConstraints);
+
     let stream;
     try {
-      stream = await startCamera(baseConstraints);
-      console.log("[getOptimalStream] Базовый стрим получен");
+      stream = await safeStartCamera(baseConstraints);
+      log("[getOptimalStream] Базовый стрим получен");
     } catch (err) {
       console.error("[getOptimalStream] Ошибка при базовом старте:", err);
       if (
@@ -380,32 +340,38 @@ export const VideoProvider = ({ children }) => {
 
       try {
         await videoTrack.applyConstraints(candidateVideo);
-        const { width, height } = videoTrack.getSettings() || {};
-        console.log(`[getOptimalStream] i=${i} => ${width}x${height}`);
+        const {
+          width,
+          height,
+          facingMode: currentFacingMode,
+        } = videoTrack.getSettings() || {};
+        log(
+          `[getOptimalStream] i=${i} => ${width}x${height} facingMode=>${currentFacingMode}`
+        );
 
         if (!width || !height) {
-          console.warn("[getOptimalStream] 0x0 => пропускаем");
+          logWarn("[getOptimalStream] 0x0 => пропускаем");
           continue;
         }
 
         const isLive = await testVideoStream(stream);
         if (isLive) {
-          localStorage.setItem(facingModeInit, JSON.stringify(cameraVariants[i]));
+          localStorage.setItem(
+            facingModeInit,
+            JSON.stringify(cameraVariants[i])
+          );
           setVideoLoader({ pos: 0, count: 0 });
-          console.log(`[getOptimalStream] i=${i} => OK, return`);
+          log(`[getOptimalStream] i=${i} => OK, return`);
           return stream;
         } else {
-          console.warn(`[getOptimalStream] i=${i} => чёрный кадр, skip`);
+          logWarn(`[getOptimalStream] i=${i} => чёрный кадр, skip`);
         }
       } catch (errApply) {
-        console.warn(
-          `[getOptimalStream] applyConstraints error i=${i}:`,
-          errApply
-        );
+        logWarn(`[getOptimalStream] applyConstraints error i=${i}:`, errApply);
 
         if (errApply.name === "OverconstrainedError") {
           failedConstraints.add(key);
-          console.warn(
+          logWarn(
             "[getOptimalStream] Overconstrained => реинициализируем камеру"
           );
           videoTrack.stop();
@@ -415,7 +381,7 @@ export const VideoProvider = ({ children }) => {
             videoTrack = stream.getVideoTracks()[0];
             if (!videoTrack) break;
           } catch (reinitErr) {
-            console.warn(
+            logWarn(
               "[getOptimalStream] Повторный базовый стрим => ошибка:",
               reinitErr
             );
@@ -435,7 +401,7 @@ export const VideoProvider = ({ children }) => {
 
     // ======= fallback: хотя бы с facingMode
     try {
-      console.warn("[getOptimalStream] Пробуем fallback с только facingMode");
+      logWarn("[getOptimalStream] Пробуем fallback с только facingMode");
       const fallbackStream = await startCamera({
         audio: false,
         video: { facingMode },
@@ -443,27 +409,20 @@ export const VideoProvider = ({ children }) => {
       if (fallbackStream) {
         const isLiveFallback = await testVideoStream(fallbackStream);
         if (isLiveFallback) {
-          console.log(
-            "[getOptimalStream] Fallback с facingMode OK, возвращаем"
-          );
+          log("[getOptimalStream] Fallback с facingMode OK, возвращаем");
           return fallbackStream;
         } else {
-          console.warn(
-            "[getOptimalStream] Fallback с facingMode — чёрный кадр"
-          );
+          logWarn("[getOptimalStream] Fallback с facingMode — чёрный кадр");
           fallbackStream.getVideoTracks().forEach((t) => t.stop());
         }
       }
     } catch (fallbackErr) {
-      console.warn(
-        "[getOptimalStream] fallback с facingMode ошибка:",
-        fallbackErr
-      );
+      logWarn("[getOptimalStream] fallback с facingMode ошибка:", fallbackErr);
     }
     // ======= end fallback
 
     setVideoLoader({ pos: 0, count: 0 });
-    console.warn("[getOptimalStream] Все варианты + fallback => неудача");
+    logWarn("[getOptimalStream] Все варианты + fallback => неудача");
     setIsWeakCameraResolution(true);
     return null;
   }
